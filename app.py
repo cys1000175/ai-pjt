@@ -84,6 +84,7 @@ def load_initial_data():
             total_df["징계종류_정제"] = total_df["징계종류"].apply(clean_discipline_type)
             
             total_df["년도"] = pd.to_numeric(total_df["년도"], errors='coerce').fillna(datetime.date.today().year).astype(int)
+            total_df["성명"] = total_df["성명"].fillna("미상").astype(str).str.strip()
             
             total_df = total_df.sort_values(by=["년도", "징계일"]).reset_index(drop=True)
             total_df["번호"] = total_df.index + 1
@@ -150,23 +151,23 @@ if submit_button:
 
 df = st.session_state.discipline_data
 
-# ----------------------------------------------------------------🔍 메인 화면: 동적 필터
-# [수정 완료] 문장이 끊기지 않도록 확실하게 마감 처리를 완료했습니다.
-st.subheader("🔍 데이터 통합 필터링 (2018년 ~ 2026년 전체)")
+# ----------------------------------------------------------------🔍 메인 화면: 동적 필터 (요청사항 반영)
+st.subheader("🔍 데이터 통합 검색 필터")
 
 if not df.empty:
     col1, col2, col3 = st.columns(3)
     with col1:
-        f_division = st.multiselect("구분(법인)", options=list(df["구분"].unique()), default=list(df["구분"].unique()))
-    with col2:
         f_year = st.multiselect("년도(개별 시트 통합됨)", options=sorted(list(df["년도"].unique())), default=sorted(list(df["년도"].unique())))
+    with col2:
+        f_dept = st.multiselect("소속(사업장-자동 정리됨)", options=list(df["소속_정제"].unique()), default=list(df["소속_정제"].unique())[:15])
     with col3:
-        f_dept = st.multiselect("소속(사업장 - 자동 정리됨)", options=list(df["소속_정제"].unique()), default=list(df["소속_정제"].unique())[:15])
+        # [변경포인트] 성명 다중 선택 필터 탑재
+        f_name = st.multiselect("성명별 필터", options=sorted(list(df["성명"].unique())), default=list(df["성명"].unique()))
 
     filtered_df = df[
-        (df["구분"].isin(f_division)) & 
         (df["년도"].isin(f_year)) & 
-        (df["소속_정제"].isin(f_dept))
+        (df["소속_정제"].isin(f_dept)) &
+        (df["성명"].isin(f_name))
     ]
 else:
     filtered_df = df
