@@ -4,8 +4,7 @@ import plotly.express as px
 import os
 
 st.set_page_config(layout="wide")
-st.title("🏛️ 미성엠프로 인사 징계 통합 시스템")
-st.markdown("##### MPRO Enterprise HR Data Platform")
+st.title("🏛️ 미성엠프로 인사 징계 시스템")
 
 ADMIN_PASSWORD = "1234"
 
@@ -117,4 +116,105 @@ else:
     k1, k2, k3 = st.columns(3)
     k1.metric("📊 총 발생", f"{len(f_df)} 건")
     k2.metric("🏢 사업장 수", f"{f_df['Dept_Clean'].nunique()} 개소")
-    m_type
+    
+    if not f_df.empty:
+        m_type = f_df['Type_Clean'].value_counts().idxmax()
+    else:
+        m_type = '없음'
+    k3.metric("⚠️ 최다 유형", f"{m_type}")
+    
+    st.markdown("---")
+    col_left, col_right = st.columns(2)
+    
+    c_seq = [
+        "#F78E1E", 
+        "#807F83", 
+        "#FFB85F", 
+        "#4B4A4D", 
+        "#E6C594"
+    ]
+    
+    with col_left:
+        st.write("##### 🏢 위원회 구분별 현황")
+        div_counts = f_df["Division"].value_counts().reset_index()
+        div_counts.columns = ["구분", "건수"]
+        
+        fig1 = px.bar(
+            div_counts, 
+            x="구분", 
+            y="건수",
+            color="구분", 
+            color_discrete_sequence=c_seq,
+            text_auto=True
+        )
+        fig1.update_traces(
+            showlegend=False
+        )
+        fig1.update_layout(
+            showlegend=False, 
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
+        st.plotly_chart(fig1, use_container_width=True)
+        
+        st.write("##### 📍 사업장별 TOP 10")
+        top_depts = f_df["Dept_Clean"].value_counts().head(10).reset_index()
+        top_depts.columns = ["사업장명", "건수"]
+        fig2 = px.bar(
+            top_depts, 
+            x="사업장명", 
+            y="건수", 
+            color="사업장명", 
+            color_discrete_sequence=c_seq,
+            text_auto=True
+        )
+        fig2.update_traces(
+            showlegend=False
+        )
+        fig2.update_layout(
+            showlegend=False, 
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+        
+    with col_right:
+        st.write("##### 📅 연도별 추이 트렌드")
+        trend = f_df.groupby("Year").size().reset_index(name="건수")
+        fig3 = px.line(
+            trend, 
+            x="Year", 
+            y="건수",
+            color_discrete_sequence=["#F78E1E"]
+        )
+        fig3.update_traces(
+            line_width=4, 
+            marker=dict(size=10)
+        )
+        fig3.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig3, use_container_width=True)
+        
+        st.write("##### ⚖️ 조치 유형별 비율")
+        fig4 = px.pie(
+            f_df, 
+            names="Type_Clean", 
+            hole=0.45,
+            color_discrete_sequence=c_seq
+        )
+        fig4.update_traces(
+            textposition='inside', 
+            textinfo='label+percent'
+        )
+        fig4.update_layout(
+            showlegend=False
+        )
+        st.plotly_chart(fig4, use_container_width=True)
+        
+    st.markdown("---")
+    show_df = f_df[["Year", "Division", "Date", "Dept", "Position", "Name", "Reason", "Type"]].copy()
+    show_df.columns = ["년도", "구분", "일자", "소속", "직책", "성명", "징계 사유", "징계종류"]
+    st.dataframe(show_df, use_container_width=True, hide_index=True)
+    
+    import io
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer: 
+        show_df.to_excel(writer, index=False)
+    st.download_button(label="📥 다운로드 (Excel)", data=output.getvalue(), file_name="HR_report.xlsx")
