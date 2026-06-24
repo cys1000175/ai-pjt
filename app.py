@@ -7,7 +7,7 @@ st.set_page_config(layout="wide")
 st.title("인사 징계 내역 통합 관리 대시보드")
 
 # 보안 비밀번호 설정
-ADMIN_PASSWORD = "1234"
+ADMIN_PASSWORD = "misung7223*"
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
