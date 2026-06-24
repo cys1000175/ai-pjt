@@ -6,14 +6,12 @@ import os
 st.set_page_config(layout="wide")
 st.title("인사 징계 내역 통합 관리 대시보드")
 
-# [보안 설정] 원하는 비밀번호를 여기에 지정하세요.
+# [보안 설정] 원하는 비밀번호 지정
 ADMIN_PASSWORD = "1234"
 
-# 비밀번호 확인을 위한 세션 상태 초기화
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# 비밀번호 입력 창 UI (인증되지 않은 경우에만 표시)
 if not st.session_state.authenticated:
     st.write("### 🔒 보안 잠금 시스템")
     st.info("본 대시보드는 민감한 개인정보를 포함하고 있습니다. 비밀번호를 입력해 주세요.")
@@ -26,7 +24,7 @@ if not st.session_state.authenticated:
             st.rerun()
         else:
             st.error("❌ 비밀번호가 일치하지 않습니다. 다시 시도해 주세요.")
-    st.stop() # 인증 전에는 하위 코드가 절대 실행되지 않도록 강제 차단
+    st.stop()
 
 FILE_NAME = "data.xlsx"
 
@@ -115,7 +113,7 @@ else:
         f_df = f_df[f_df["Year"].isin(f_yr)]
     if f_dp:
         f_df = f_df[f_df["Dept_Clean"].isin(f_dp)]
-    if f_name: # 💥 변수명 정합성 유지
+    if f_nm: # [🔥 오타 전면 교정 완료] 변수명을 f_nm과 확실하게 일치시켰습니다.
         f_df = f_df[f_df["Name"].isin(f_nm)]
         
     st.write("---")
@@ -136,27 +134,4 @@ else:
         
         st.write("#### 📍 소속 사업장별 발생 TOP 10")
         top_depts = f_df["Dept_Clean"].value_counts().head(10).reset_index()
-        top_depts.columns = ["사업장명", "건수"]
-        st.plotly_chart(px.bar(top_depts, x="사업장명", y="건수", color="사업장명"), use_container_width=True)
-        
-    with col_right:
-        st.write("#### 📅 연도별 장기 추이 트렌드 (2018-2026)")
-        trend = f_df.groupby("Year").size().reset_index(name="건수")
-        st.plotly_chart(px.line(trend, x="Year", y="건수", markers=True, labels={"Year": "연도"}), use_container_width=True)
-        
-        st.write("#### ⚖️ 전체 징계 유형별 비율 현황")
-        st.plotly_chart(px.pie(f_df, names="Type_Clean", hole=0.3), use_container_width=True)
-        
-    st.write("---")
-    st.write("### 📋 통합 상세 내역 마스터 테이블")
-    
-    show_df = f_df[["Year", "Division", "Date", "Dept", "Position", "Name", "Reason", "Type"]].copy()
-    show_df.columns = ["년도", "구분", "일자", "소속", "직책", "성명", "징계 사유", "징계종류"]
-    
-    st.dataframe(show_df, use_container_width=True, hide_index=True)
-    
-    import io
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        show_df.to_excel(writer, index=False)
-    st.download_button(label="📥 통합 정제 데이터 다운로드 (Excel)", data=output.getvalue(), file_name="HR_integrated_report.xlsx")
+        top_depts.columns =
