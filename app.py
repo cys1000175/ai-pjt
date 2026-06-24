@@ -6,6 +6,28 @@ import os
 st.set_page_config(layout="wide")
 st.title("인사 징계 내역 통합 관리 대시보드")
 
+# [보안 설정] 원하는 비밀번호를 여기에 지정하세요.
+ADMIN_PASSWORD = "1234"
+
+# 비밀번호 확인을 위한 세션 상태 초기화
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# 비밀번호 입력 창 UI (인증되지 않은 경우에만 표시)
+if not st.session_state.authenticated:
+    st.write("### 🔒 보안 잠금 시스템")
+    st.info("본 대시보드는 민감한 개인정보를 포함하고 있습니다. 비밀번호를 입력해 주세요.")
+    
+    input_pw = st.text_input("비밀번호 입력", type="password")
+    if st.button("인증하기"):
+        if input_pw == ADMIN_PASSWORD:
+            st.session_state.authenticated = True
+            st.success("🔒 인증 성공! 대시보드를 로드합니다.")
+            st.rerun()
+        else:
+            st.error("❌ 비밀번호가 일치하지 않습니다. 다시 시도해 주세요.")
+    st.stop() # 인증 전에는 하위 코드가 절대 실행되지 않도록 강제 차단
+
 FILE_NAME = "data.xlsx"
 
 @st.cache_data
@@ -79,7 +101,6 @@ df = load_all_data()
 if df.empty:
     st.error("데이터를 로드하지 못했습니다. data.xlsx 파일을 확인해 주세요.")
 else:
-    # [한글화] 검색 필터 라벨 수정
     st.write("### 🔍 데이터 통합 검색 필터")
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -94,10 +115,9 @@ else:
         f_df = f_df[f_df["Year"].isin(f_yr)]
     if f_dp:
         f_df = f_df[f_df["Dept_Clean"].isin(f_dp)]
-    if f_nm:
+    if f_name: # 💥 변수명 정합성 유지
         f_df = f_df[f_df["Name"].isin(f_nm)]
         
-    # [한글화] KPI 요약 지표 수정
     st.write("---")
     k1, k2, k3 = st.columns(3)
     k1.metric("총 누적 발생 건수", f"{len(f_df)} 건")
@@ -106,7 +126,6 @@ else:
     most_type = f_df['Type_Clean'].value_counts().idxmax() if not f_df.empty else '없음'
     k3.metric("가장 빈번한 징계 종류", f"{most_type}")
     
-    # [한글화] 시각화 그래프 제목 및 축 정제
     st.write("---")
     st.write("### 📊 실시간 데이터 통계 시각화")
     col_left, col_right = st.columns(2)
@@ -128,11 +147,9 @@ else:
         st.write("#### ⚖️ 전체 징계 유형별 비율 현황")
         st.plotly_chart(px.pie(f_df, names="Type_Clean", hole=0.3), use_container_width=True)
         
-    # [한글화] 데이터 마스터 테이블 및 다운로드 버튼 명칭 변경
     st.write("---")
     st.write("### 📋 통합 상세 내역 마스터 테이블")
     
-    # 출력용 컬럼 한글화 딕셔너리 매핑
     show_df = f_df[["Year", "Division", "Date", "Dept", "Position", "Name", "Reason", "Type"]].copy()
     show_df.columns = ["년도", "구분", "일자", "소속", "직책", "성명", "징계 사유", "징계종류"]
     
