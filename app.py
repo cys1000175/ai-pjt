@@ -104,4 +104,59 @@ if not df.empty:
     with col2:
         f_year = st.multiselect("년도", options=sorted(df["년도"].dropna().unique()), default=sorted(df["년도"].dropna().unique()))
     with col3:
-        f_dept =
+        f_dept = st.multiselect("소속(사업장)", options=df["소속"].dropna().unique(), default=df["소속"].dropna().unique())
+
+    filtered_df = df[
+        (df["구분"].isin(f_division)) & 
+        (df["년도"].isin(f_year)) & 
+        (df["소속"].isin(f_dept))
+    ]
+else:
+    filtered_df = df
+
+# ----------------------------------------------------------------📊 메인 화면: 시각화 차트
+st.markdown("---")
+st.subheader("📊 실시간 분석 통계")
+
+if not filtered_df.empty:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("#### 🏢 구분(법인)별 발생 건수")
+        st.plotly_chart(px.bar(filtered_df, x="구분", color="구분", labels={"구분": "법인 구분", "count": "건수"}), use_container_width=True)
+        
+        st.markdown("#### 📍 소속(사업장)별/징계종류 분포")
+        # [수정 완료] '징계유형'을 새로운 열 이름인 '징계종류'로 수정했습니다.
+        st.plotly_chart(px.histogram(filtered_df, x="소속", color="징계종류", barmode="stack", labels={"소속": "소속 사업장"}), use_container_width=True)
+    with c2:
+        st.markdown("#### 📅 월별 트렌드 (징계일 기준)")
+        trend = filtered_df.copy()
+        trend["징계일"] = pd.to_datetime(trend["징계일"], errors='coerce')
+        trend = trend.dropna(subset=["징계일"])
+        
+        if not trend.empty:
+            trend["년월"] = trend["징계일"].dt.strftime("%Y-%m")
+            trend_g = trend.groupby("년월").size().reset_index(name="건수").sort_values("년월")
+            st.plotly_chart(px.line(trend_g, x="년월", y="건수", markers=True), use_container_width=True)
+        else:
+            st.info("시계열 그래프를 표시할 수 있는 유효한 '징계일' 데이터가 엑셀에 없습니다.")
+        
+        st.markdown("#### ⚖️ 징계종류 비율")
+        st.plotly_chart(px.pie(filtered_df, names="징계종류", hole=0.4), use_container_width=True)
+else:
+    st.warning("조건에 맞는 데이터가 없습니다.")
+
+# ----------------------------------------------------------------📄 메인 화면: 데이터 표 및 다운로드
+st.markdown("---")
+st.subheader("📋 상세 내역 리스트")
+st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+
+# 다운로드 버튼
+import io
+output = io.BytesIO()
+with pd.ExcelWriter(output, engine='openpyxl') as writer:
+    filtered_df.to_excel(writer, index=False)
+st.download_button(
+    label="📥 현재 데이터 엑셀 다운로드", data=output.getvalue(),
+    file_name="discipline_report.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
