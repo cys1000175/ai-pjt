@@ -4,9 +4,8 @@ import plotly.express as px
 import os
 import re
 
-st.set_page_config(page_title="HR Dashboard", layout="wide")
-st.title("Discipline Integrated Dashboard (2018-2026)")
-st.markdown("AI Data Integration System Project Protocol.")
+st.set_page_config(layout="wide")
+st.title("HR Dashboard (2018-2026)")
 
 EXCEL_FILE = "data.xlsx"
 COLS = ["번호", "년도", "구분", "소속", "직책", "성명", "징계 사유", "징계종류", "징계일"]
@@ -20,9 +19,7 @@ def clean_type(val):
 
 def clean_loc(val):
     if pd.isna(val) or not isinstance(val, str): return "미지정"
-    val = val.replace('\n', ' ').strip()
-    val = re.sub(r'\s*\(.*?\)\s*', '', val)
-    return val.strip()
+    return re.sub(r'\s*\(.*?\)\s*', '', val.replace('\n', ' ')).strip()
 
 @st.cache_data
 def load_data():
@@ -51,8 +48,7 @@ def load_data():
                 if "일 자" in df_real.columns: df_real["징계일"] = df_real["일 자"]
             rows.append(df_real[COLS])
         if not rows: return pd.DataFrame(columns=COLS + ["소속_정제", "징계종류_정제"])
-        df_tot = pd.concat(rows, ignore_index=True)
-        df_tot = df_tot.dropna(subset=["성명", "소속", "징계종류"], how="all")
+        df_tot = pd.concat(rows, ignore_index=True).dropna(subset=["성명", "소속", "징계종류"], how="all")
         df_tot["성명"] = df_tot["성명"].fillna("미상").astype(str).str.strip()
         df_tot = df_tot[df_tot["성명"] != ""]
         df_tot["구분"] = df_tot["구분"].fillna("인사위").astype(str).str.strip().replace("", "인사위")
@@ -74,18 +70,16 @@ def load_data():
 
 df = load_data()
 
-st.subheader("Search Filter")
+st.subheader("Filters")
 if not df.empty:
     col1, col2, col3 = st.columns(3)
     o_yr = sorted(list(df["년도"].unique()))
     o_dp = sorted(list(df["소속_정제"].unique()))
     o_nm = sorted(list(df["성명"].unique()))
+    with col1: f_yr = st.multiselect("Year", options=o_yr)
+    with col2: f_dept = st.multiselect("Department", options=o_dp)
+    with col3: f_name = st.multiselect("Name", options=o_nm)
     
-    with col1: f_yr = st.multiselect("Year Filter", options=o_yr)
-    with col2: f_dept = st.multiselect("Department Filter", options=o_dp)
-    with col3: f_name = st.multiselect("Name Filter", options=o_nm)
-    
-    # [🔥 핵심 수정] 필터 박스가 비어있을 때는 무조건 조건문 패스(전체선택)하는 가드 배치
     f_df = df.copy()
     if f_yr: f_df = f_df[f_df["년도"].isin(f_yr)]
     if f_dept: f_df = f_df[f_df["소속_정제"].isin(f_dept)]
@@ -96,19 +90,33 @@ else:
 st.markdown("---")
 if not f_df.empty:
     kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("Total Records", f"{len(f_df)} 건")
-    kpi2.metric("Total Departments", f"{f_df['소속_정제'].nunique()} 개소")
-    kpi3.metric("Top Discipline Type", f"{f_df['징계종류_정제'].value_counts().idxmax()}")
+    kpi1.metric("Total Count", f"{len(f_df)} 건")
+    kpi2.metric("Total Depts", f"{f_df['소속_정제'].nunique()} 개소")
+    kpi3.metric("Top Type", f"{f_df['징계종류_정제'].value_counts().idxmax()}")
 
-st.subheader("Data Visualization Chart")
+st.subheader("Charts")
 if not f_df.empty:
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("#### Top 10 Departments")
-        top_10 = f_df["소속_정제"].value_counts().head(10).reset_index()
-        top_10.columns = ["소속_정제", "count"]
-        st.plotly_chart(px.bar(top_10, x="소속_정제", y="count", color="소속_정제"), use_container_width=True)
-        st.markdown("#### Records by Department and Type")
+        st.write("#### Company Bar Chart")
+        st.plotly_chart(px.bar(f_df, x="구분", color="구분"), use_container_width=True)
+        st.write("#### Department Histogram")
         st.plotly_chart(px.histogram(f_df, x="소속_정제", color="징계종류_정제", barmode="stack"), use_container_width=True)
     with c2:
-        st.markdown("#### Yearly Trend (2018-2
+        st.write("#### Yearly Trend Line")
+        yt = f_df.groupby("년도").size().reset_index(name="count")
+        st.plotly_chart(px.line(yt, x="년도", y="count", markers=True), use_container_width=True)
+        st.write("#### Discipline Pie Chart")
+        st.plotly_chart(px.pie(f_df, names="징계종류_정제", hole=0.4), use_container_width=True)
+else:
+    st.warning("No data found.")
+
+st.markdown("---")
+st.subheader("Data List")
+if not f_df.empty:
+    disp_df = f_df[COLS]
+    st.dataframe(disp_df, use_container_width=True, hide_index=True)
+    import io
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as w: disp_df.to_excel(w, index=False)
+    st.download_button(label="Download Excel", data=output.getvalue(), file_name="report.xlsx")
