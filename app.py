@@ -36,35 +36,28 @@ def clean_location_name(val):
     return val.strip()
 
 def load_initial_data():
-    # [💡 데이터 진단 시스템 가동]
     if os.path.exists(EXCEL_FILE):
         try:
-            # 엑셀 파일 읽기
             read_df = pd.read_excel(EXCEL_FILE)
             
-            # 파일은 있는데 행 데이터가 아예 없는 경우 방지
             if read_df.empty:
                 st.warning(f"⚠️ '{EXCEL_FILE}' 파일이 비어 있습니다. 샘플 데이터를 표시합니다.")
                 return get_sample_data()
                 
-            # 엑셀에 필수 열들이 모두 있는지 확인하고 없으면 빈 열 생성
             for col in REQUIRED_COLUMNS:
                 if col not in read_df.columns:
-                    # 대소문자나 띄어쓰기 오차를 잡아주기 위한 유연성 처리
                     matched_col = [c for c in read_df.columns if c.strip() == col]
                     if matched_col:
                         read_df[col] = read_df[matched_col[0]]
                     else:
                         read_df[col] = ""
             
-            # 데이터 정제 및 채우기
             read_df["구분"] = read_df["구분"].fillna("미지정").astype(str).str.strip()
             read_df["구분"] = read_df["구분"].apply(lambda x: "미지정" if x == "" or x == "nan" else x)
             
             read_df["소속_정제"] = read_df["소속"].apply(clean_location_name)
             read_df["징계종류_정제"] = read_df["징계종류"].apply(clean_discipline_type)
             
-            # 년도 숫자로 강제 정제
             read_df["년도"] = pd.to_numeric(read_df["년도"], errors='coerce').fillna(datetime.date.today().year).astype(int)
             return read_df
             
@@ -72,12 +65,10 @@ def load_initial_data():
             st.error(f"❌ 엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
             return get_sample_data()
     else:
-        # [⚠️ 가장 흔한 원인] 파일 위치가 잘못되었을 때 사용자에게 알림
         st.error(f"🚨 서버 컴퓨터(GitHub)에서 '{EXCEL_FILE}' 파일을 찾을 수 없습니다! 파일 이름을 정확히 소문자 data.xlsx 로 해서 업로드했는지 확인해 주세요. 임시 샘플 데이터를 노출합니다.")
         return get_sample_data()
 
 def get_sample_data():
-    """파일이 없거나 깨졌을 때 구동되는 안전판 데이터"""
     return pd.DataFrame([
         {
             "번호": 1, "년도": 2026, "구분": "샘플법인(A사)", "소속": "서울본사 (미화)", "소속_정제": "서울본사",
@@ -103,20 +94,4 @@ with st.sidebar.form(key="input_form", clear_on_submit=True):
     input_year = st.number_input("년도", min_value=2020, max_value=2030, value=current_year)
     input_date = st.date_input("징계일 선택", datetime.date.today())
     
-    input_dept = st.text_input("소속(사업장명)")
-    input_position = st.text_input("직책")
-    input_name = st.text_input("성명")
-    input_type = st.selectbox("징계종류", ["견책", "감봉", "정직", "강등", "해고", "경고", "훈계", "권고사직"])
-    input_reason = st.text_area("징계 사유")
-    
-    submit_button = st.form_submit_button(label="대시보드에 추가")
-
-if submit_button:
-    if input_dept and input_name and input_reason:
-        next_id = len(st.session_state.discipline_data) + 1
-        
-        new_row = {
-            "번호": next_id, "년도": int(input_year), "구분": input_division, "소속": input_dept,
-            "소속_정제": clean_location_name(input_dept), "직책": input_position, "성명": input_name,
-            "징계 사유": input_reason, "징계종류": input_type, "징계종류_정제": clean_discipline_type(input_type),
-            "징계일": input_date.strftime("%Y-%m-%
+    input_dept = st.text
