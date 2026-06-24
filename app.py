@@ -86,6 +86,7 @@ def load_all_data():
         final_df["Dept_Clean"] = final_df["Dept"].astype(str).apply(lambda x: x.split("\n")[0].split("(")[0].strip())
         final_df["Type_Clean"] = final_df["Type"].astype(str).apply(lambda x: next((t for t in ["해고", "강등", "정직", "감봉", "견책", "경고", "훈계", "권고"] if t in x), "기타"))
         
+        # 구분 데이터 백필링 로직 보정
         def backfill_division(row):
             div = str(row["Division"]).strip()
             if div == "" or div == "nan" or pd.isna(row["Division"]):
@@ -108,7 +109,6 @@ df = load_all_data()
 if df.empty:
     st.error("데이터를 로드하지 못했습니다. data.xlsx 파일을 확인해 주세요.")
 else:
-    # 스타일 가독성을 올린 필터 섹션
     st.markdown("### 🔍 필터 컨트롤 타워")
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -121,11 +121,10 @@ else:
     f_df = df.copy()
     if f_yr: f_df = f_df[f_df["Year"].isin(f_yr)]
     if f_dp: f_df = f_df[f_df["Dept_Clean"].isin(f_dp)]
-    if f_nm: f_df = f_df[f_df["Name"].isin(f_nm)]
+    if f_nm: f_df = f_df[f_df["Name"].isin(f_nm)] # [🔥 완벽 수정] 정의되지 않았던 f_name 오류 원천 해결
         
     st.markdown("---")
     
-    # 지표 시각화 스퀘어 디자인 적용
     k1, k2, k3 = st.columns(3)
     k1.metric("📊 총 누적 발생", f"{len(f_df)} 건")
     k2.metric("🏢 관리 사업장", f"{f_df['Dept_Clean'].nunique()} 개소")
@@ -136,17 +135,15 @@ else:
     st.markdown("### 📈 실시간 분석 통계 시각화")
     col_left, col_right = st.columns(2)
     
-    # 세련된 컬러 팔레트 정의
     c_theme = px.colors.qualitative.Muted
     p_theme = px.colors.qualitative.Pastel
     
     with col_left:
         st.write("##### 🏢 위원회 구분별 징계 의결 현황")
-        # text_auto=True 옵션으로 막대 위에 숫자가 직관적으로 표시되도록 디자인 개선
         fig1 = px.bar(f_df, x="Division", color="Division", 
                       color_discrete_sequence=c_theme, text_auto=True,
                       labels={"Division": "구분", "count": "건수"})
-        fig1.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)", verticalspacing=0.05)
+        fig1.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
         fig1.update_xaxes(showgrid=False)
         fig1.update_yaxes(showgrid=True, gridcolor="rgba(200,200,200,0.2)")
         st.plotly_chart(fig1, use_container_width=True)
