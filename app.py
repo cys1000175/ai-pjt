@@ -9,27 +9,33 @@ st.set_page_config(page_title="징계 내역 관리 시스템", layout="wide")
 st.title("📊 법인별·사업장별 징계 내역 관리 대시보드")
 st.markdown("AI 공모전 제출용 통합 관리 프로토타입 시스템입니다.")
 
-# 2. 엑셀 데이터 자동 로드 (data.xlsx가 같은 폴더에 있어야 함)
+# 2. 엑셀 데이터 로드 설정
 EXCEL_FILE = "data.xlsx"
 
-@st.cache_data
+# [수정 포인트 1] @st.cache_data를 사용하면 사용자가 사이드바에서 데이터를 추가해도 화면에 반영되지 않는 문제가 생깁니다.
+# 실시간 입력 데이터 반영을 위해 캐싱을 제거하거나 세션 상태와 결합해야 합니다.
 def load_initial_data():
     if os.path.exists(EXCEL_FILE):
         try:
-            return pd.read_excel(EXCEL_FILE)
+            read_df = pd.read_excel(EXCEL_FILE)
+            # 엑셀 데이터의 공백이나 데이터 타입을 깔끔하게 맞춰줍니다.
+            read_df["년도"] = read_df["년도"].astype(int)
+            read_df["월"] = read_df["월"].astype(int)
+            return read_df
         except Exception as e:
             st.error(f"엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
             return pd.DataFrame(columns=["법인", "년도", "월", "사업장", "징계대상자", "징계유형", "사유"])
     else:
-        # 파일이 없을 때를 대비한 기본 샘플 데이터
+        # 파일이 없을 때를 대비한 기본 샘플 데이터 구조
         return pd.DataFrame([
             {"법인": "A전자", "년도": 2026, "월": 1, "사업장": "서울본사", "징계대상자": "홍길동", "징계유형": "감봉", "사유": "근태 불량"}
         ])
 
-# 세션 상태에 데이터 저장 (실시간 입력 반영용)
+# 세션 상태에 데이터 저장
 if 'discipline_data' not in st.session_state:
     st.session_state.discipline_data = load_initial_data()
 
+# [수정 포인트 2] 데이터 동기화 오류 방지를 위해 항상 세션 데이터를 직접 참조합니다.
 df = st.session_state.discipline_data
 
 # ----------------------------------------------------------------💡 사이드바: 데이터 추가 입력
@@ -56,11 +62,15 @@ if submit_button:
             "법인": input_company, "년도": int(input_year), "월": int(input_month),
             "사업장": input_site, "징계대상자": input_name, "징계유형": input_type, "사유": input_reason
         }
-        st.session_state.discipline_data = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        # 데이터 합치기 및 세션 갱신
+        st.session_state.discipline_data = pd.concat([st.session_state.discipline_data, pd.DataFrame([new_row])], ignore_index=True)
         st.sidebar.success("✅ 대시보드에 반영되었습니다!")
         st.rerun()
     else:
         st.sidebar.error("⚠️ 모든 항목을 입력해주세요.")
+
+# 데이터프레임 최신화
+df = st.session_state.discipline_data
 
 # ----------------------------------------------------------------🔍 메인 화면: 동적 필터
 st.subheader("🔍 데이터 필터링")
@@ -96,9 +106,16 @@ if not filtered_df.empty:
     with c2:
         st.markdown("#### 📅 월별 트렌드")
         trend = filtered_df.copy()
-        trend["년월"] = trend["년도"].astype(str) + "-" + trend["월"].astype(str).str.zfill(2)
-        trend = trend.groupby("년월").size().reset_index(name="건수")
+        
+        # [수정 포인트 3 - 핵심 오류 해결] 
+        # 기존 코드인 trend["월"].astype(str).str.zfill(2)는 판다스 버전에 따라 에러를 뱉습니다.
+        # 안전하게 수치형 데이터를 문자로 바꾸고 가공하는 정석적인 방식으로 변경했습니다.
+        trend["년월"] = trend["년도"].astype(str) + "-" + trend["월"].apply(lambda x: str(int(x)).zfill(2))
+        
+        # 년월 기준으로 묶어 정렬 후 차트를 그립니다.
+        trend = trend.groupby("년월").size().reset_index(name="건수").sort_values("년월")
         st.plotly_chart(px.line(trend, x="년월", y="건수", markers=True), use_container_width=True)
+        
         st.markdown("#### ⚖️ 징계 유형 비율")
         st.plotly_chart(px.pie(filtered_df, names="징계유형", hole=0.4), use_container_width=True)
 else:
