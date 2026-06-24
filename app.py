@@ -6,7 +6,7 @@ import os
 st.set_page_config(layout="wide")
 st.title("인사 징계 내역 통합 관리 대시보드")
 
-# [보안 설정] 원하는 비밀번호 지정
+# 보안 비밀번호 설정
 ADMIN_PASSWORD = "1234"
 
 if "authenticated" not in st.session_state:
@@ -113,7 +113,7 @@ else:
         f_df = f_df[f_df["Year"].isin(f_yr)]
     if f_dp:
         f_df = f_df[f_df["Dept_Clean"].isin(f_dp)]
-    if f_nm: # [🔥 오타 전면 교정 완료] 변수명을 f_nm과 확실하게 일치시켰습니다.
+    if f_nm:
         f_df = f_df[f_df["Name"].isin(f_nm)]
         
     st.write("---")
@@ -130,8 +130,39 @@ else:
     
     with col_left:
         st.write("#### 🏢 구분별 발생 건수")
-        st.plotly_chart(px.bar(f_df, x="Division", color="Division", labels={"Division": "위원회 구분", "count": "건수"}), use_container_width=True)
+        fig1 = px.bar(f_df, x="Division", color="Division", labels={"Division": "위원회 구분", "count": "건수"})
+        st.plotly_chart(fig1, use_container_width=True)
         
         st.write("#### 📍 소속 사업장별 발생 TOP 10")
         top_depts = f_df["Dept_Clean"].value_counts().head(10).reset_index()
-        top_depts.columns =
+        # [🔥 짤림 완벽 방정] 짤림을 유발하던 컬럼 정의 부분을 분할 선언했습니다.
+        c_names = ["사업장명", "건수"]
+        top_depts.columns = c_names
+        fig2 = px.bar(top_depts, x="사업장명", y="건수", color="사업장명")
+        st.plotly_chart(fig2, use_container_width=True)
+        
+    with col_right:
+        st.write("#### 📅 연도별 장기 추이 트렌드 (2018-2026)")
+        trend = f_df.groupby("Year").size().reset_index(name="건수")
+        fig3 = px.line(trend, x="Year", y="건수", markers=True, labels={"Year": "연도"})
+        st.plotly_chart(fig3, use_container_width=True)
+        
+        st.write("#### ⚖️ 전체 징계 유형별 비율 현황")
+        fig4 = px.pie(f_df, names="Type_Clean", hole=0.3)
+        st.plotly_chart(fig4, use_container_width=True)
+        
+    st.write("---")
+    st.write("### 📋 통합 상세 내역 마스터 테이블")
+    
+    show_df = f_df[["Year", "Division", "Date", "Dept", "Position", "Name", "Reason", "Type"]].copy()
+    # [🔥 안정성 강화] 컬럼명 치환을 안전하게 분할 처리
+    show_df_cols = ["년도", "구분", "일자", "소속", "직책", "성명", "징계 사유", "징계종류"]
+    show_df.columns = show_df_cols
+    
+    st.dataframe(show_df, use_container_width=True, hide_index=True)
+    
+    import io
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        show_df.to_excel(writer, index=False)
+    st.download_button(label="📥 통합 정제 데이터 다운로드 (Excel)", data=output.getvalue(), file_name="HR_integrated_report.xlsx")
