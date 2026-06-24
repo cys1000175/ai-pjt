@@ -5,7 +5,7 @@ import os
 
 st.set_page_config(layout="wide")
 st.title("🏛️ 인사 징계 내역 통합 관리 시스템")
-st.markdown("##### Enterprise HR Data Intelligence Platform")
+st.markdown("##### Enterprise HR Data Platform")
 
 ADMIN_PASSWORD = "1234"
 
@@ -101,33 +101,4 @@ else:
     f_df = df.copy()
     if f_yr: f_df = f_df[f_df["Year"].isin(f_yr)]
     if f_dp: f_df = f_df[f_df["Dept_Clean"].isin(f_dp)]
-    if f_nm: f_df = f_df[f_df["Name"].isin(f_nm)]
-        
-    st.markdown("---")
-    k1, k2, k3 = st.columns(3)
-    k1.metric("📊 총 누적 발생", f"{len(f_df)} 건")
-    k2.metric("🏢 관리 사업장", f"{f_df['Dept_Clean'].nunique()} 개소")
-    m_type = f_df['Type_Clean'].value_counts().idxmax() if not f_df.empty else '없음'
-    k3.metric("⚠️ 최다 빈도 유형", f"{m_type}")
-    
-    st.markdown("---")
-    st.markdown("### 📈 실시간 분석 통계 시각화")
-    col_left, col_right = st.columns(2)
-    
-    with col_left:
-        st.write("##### 🏢 위원회 구분별 징계 의결 현황")
-        fig1 = px.bar(f_df, x="Division", color="Division", text_auto=True)
-        fig1.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig1, use_container_width=True)
-        
-        st.write("##### 📍 리스크 관리 대상 사업장 TOP 10")
-        top_depts = f_df["Dept_Clean"].value_counts().head(10).reset_index()
-        top_depts.columns = ["사업장명", "건수"]
-        fig2 = px.bar(top_depts, x="사업장명", y="건수", color="사업장명", text_auto=True)
-        fig2.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig2, use_container_width=True)
-        
-    with col_right:
-        st.write("##### 📅 9개년 장기 발생 추이 트렌드 (2018-2026)")
-        trend = f_df.groupby("Year").size().reset_index(name="건수")
-        fig3 = px.line(trend, x="Year", y="건수", markers
+    if f_nm: f_df = f_df[f_df["Name"].
