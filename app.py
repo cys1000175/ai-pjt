@@ -128,8 +128,10 @@ else:
             color="Division", 
             text_auto=True
         )
-        # [🔥 범례 삭제 최종 특약] 데이터 트레이스 레벨까지 범례를 완전히 차단합니다.
-        fig1.update_traces(showlegend=False)
+        # [🔥 짤림 원천 배제 초압축 레이아웃] 옵션 인자들을 전부 한 줄씩 잘라 배치했습니다.
+        fig1.update_traces(
+            showlegend=False
+        )
         fig1.update_layout(
             showlegend=False, 
             plot_bgcolor="rgba(0,0,0,0)"
@@ -146,4 +148,42 @@ else:
             color="사업장명", 
             text_auto=True
         )
-        fig2.update_traces(show
+        fig2.update_traces(
+            showlegend=False
+        )
+        fig2.update_layout(
+            showlegend=False, 
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+        
+    with col_right:
+        st.write("##### 📅 연도별 추이 트렌드")
+        trend = f_df.groupby("Year").size().reset_index(name="건수")
+        fig3 = px.line(
+            trend, 
+            x="Year", 
+            y="건수"
+        )
+        fig3.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig3, use_container_width=True)
+        
+        st.write("##### ⚖️ 조치 유형별 비율")
+        fig4 = px.pie(
+            f_df, 
+            names="Type_Clean", 
+            hole=0.45
+        )
+        fig4.update_traces(textposition='inside', textinfo='label+percent')
+        st.plotly_chart(fig4, use_container_width=True)
+        
+    st.markdown("---")
+    show_df = f_df[["Year", "Division", "Date", "Dept", "Position", "Name", "Reason", "Type"]].copy()
+    show_df.columns = ["년도", "구분", "일자", "소속", "직책", "성명", "징계 사유", "징계종류"]
+    st.dataframe(show_df, use_container_width=True, hide_index=True)
+    
+    import io
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer: 
+        show_df.to_excel(writer, index=False)
+    st.download_button(label="📥 다운로드 (Excel)", data=output.getvalue(), file_name="HR_report.xlsx")
