@@ -72,15 +72,19 @@ def load_all_data():
         final_df = final_df[final_df["Name"] != ""]
         final_df["Dept_Clean"] = final_df["Dept"].astype(str).apply(lambda x: x.split("\n")[0].split("(")[0].strip())
         final_df["Type_Clean"] = final_df["Type"].astype(str).apply(lambda x: next((t for t in ["해고", "강등", "정직", "감봉", "견책", "경고", "훈계", "권고"] if t in x), "기타"))
+        
+        # [🔥 공백 버그 원천 박멸 전처리 엔진] 
+        # 텍스트 오차를 없애기 위해 앞뒤 공백을 완전히 잘라냅니다.
         def backfill_division(row):
             div = str(row["Division"]).strip()
-            if div in ["", "nan", "None"] or pd.isna(row["Division"]):
+            if div in ["", "nan", "None", "기타"] or pd.isna(row["Division"]):
                 r = str(row["Reason"])
                 if any(k in r for k in ["괴롭힘", "성희롱", "배임"]): 
-                    return "인사위 결정"
+                    return "인사위원회 결정"
                 return "일반 징계위원회"
             return div
-        final_df["Division"] = final_df.apply(backfill_division, axis=1)
+
+        final_df["Division"] = final_df.apply(backfill_division, axis=1).str.strip()
         final_df["Year"] = pd.to_numeric(final_df["Year"], errors="coerce").fillna(2026).astype(int)
         final_df = final_df[(final_df["Year"] >= 2018) & (final_df["Year"] <= 2026)]
         return final_df.sort_values(by=["Year", "Date"]).reset_index(drop=True)
@@ -122,13 +126,19 @@ else:
     
     with col_left:
         st.write("##### 🏢 위원회 구분별 현황")
+        
+        # [🔥 데이터 그룹화 연산 안전장치 기동]
+        # 각각 1건씩 쪼개지던 데이터를 판다스 레벨에서 완벽하게 카운트 집계하여 전달합니다.
+        div_counts = f_df["Division"].value_counts().reset_index()
+        div_counts.columns = ["구분", "건수"]
+        
         fig1 = px.bar(
-            f_df, 
-            x="Division", 
-            color="Division", 
+            div_counts, 
+            x="구분", 
+            y="건수",
+            color="구분", 
             text_auto=True
         )
-        # [🔥 짤림 원천 배제 초압축 레이아웃] 옵션 인자들을 전부 한 줄씩 잘라 배치했습니다.
         fig1.update_traces(
             showlegend=False
         )
