@@ -21,8 +21,7 @@ if not st.session_state.authenticated:
             st.session_state.authenticated = True
             st.success("🔒 인증 성공!")
             st.rerun()
-        else:
-            st.error("❌ 비밀번호 불일치")
+        else: st.error("❌ 비밀번호 불일치")
     st.stop()
 
 FILE_NAME = "data.xlsx"
@@ -92,7 +91,6 @@ else:
     with c3: f_nm = st.multiselect("성명 검색", options=sorted(df["Name"].unique()))
         
     f_df = df.copy()
-    # [🔥 초경량화 완벽 패치] 짤림 현상을 완벽히 방지하는 콤팩트 안전 필터 쿼리
     if f_yr: f_df = f_df[f_df["Year"].isin(f_yr)]
     if f_dp: f_df = f_df[f_df["Dept_Clean"].isin(f_dp)]
     if f_nm: f_df = f_df[f_df["Name"].isin(f_nm)]
@@ -107,7 +105,10 @@ else:
     st.markdown("---")
     st.markdown("### 📈 실시간 분석 통계 시각화")
     col_left, col_right = st.columns(2)
-    c_theme, p_theme = px.colors.qualitative.Muted, px.colors.qualitative.Pastel
+    
+    # [🔥 핵심 보정] 대문자로 입력되어 오류를 내던 Plotly 내부 테마명을 올바른 소문자(muted, pastel)로 철저히 교정했습니다.
+    c_theme = px.colors.qualitative.muted
+    p_theme = px.colors.qualitative.pastel
     
     with col_left:
         st.write("##### 🏢 위원회 구분별 징계 의결 현황")
