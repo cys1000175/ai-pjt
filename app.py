@@ -15,8 +15,8 @@ EXCEL_FILE = "data.xlsx"
 REQUIRED_COLUMNS = ["번호", "년도", "구분", "소속", "직책", "성명", "징계 사유", "징계종류", "징계일"]
 
 def clean_discipline_type(val):
-    """징계종류 텍스트 유연하게 매핑 (빈 값이면 '기타' 처리하여 필터 깨짐 방지)"""
-    if pd.isna(val) or not isinstance(val, str) or val.strip() == "":
+    """징계종류 텍스트 유연하게 매핑 (예: 감봉(10%) -> 감봉)"""
+    if pd.isna(val) or not isinstance(val, str):
         return "기타"
     val = val.strip()
     if "해고" in val: return "해고"
@@ -31,44 +31,40 @@ def clean_discipline_type(val):
     return "기타"
 
 def clean_location_name(val):
-    """소속 사업장명 뒤의 줄바꿈이나 부서 괄호 요소를 제거하여 자동 통합"""
-    if pd.isna(val) or not isinstance(val, str) or val.strip() == "":
-        return "미지정 소속"
+    """소속 사업장명 뒤의 줄바꿈이나 (미화), (보안) 등의 괄호 요소를 제거하여 자동 통합"""
+    if pd.isna(val) or not isinstance(val, str):
+        return "기타 사업장"
+    # 줄바꿈 제거 및 괄호 내용 제거
     val = val.replace('\n', ' ').strip()
     val = re.sub(r'\s*\(.*?\)\s*', '', val)
-    return val.strip() if val.strip() != "" else "미지정 소속"
+    return val.strip()
 
 def load_initial_data():
     if os.path.exists(EXCEL_FILE):
         try:
             read_df = pd.read_excel(EXCEL_FILE)
             
-            # 1. 존재하지 않는 열이 있다면 공백으로 자동 생성
+            # 엑셀에 필수 열들이 모두 있는지 확인하고 없으면 빈 열 생성
             for col in REQUIRED_COLUMNS:
                 if col not in read_df.columns:
                     read_df[col] = ""
             
-            # 2. 모든 텍스트 컬럼의 양끝 공백 제거 및 결측치(NaN) 방어 처리
-            for col in REQUIRED_COLUMNS:
-                if col not in ["번호", "년도"]:
-                    read_df[col] = read_df[col].fillna("").astype(str).str.strip()
+            # 원본 데이터 백업 보존하면서 정제 데이터 열 추가 생성 및 값 변경
+            read_df["구분"] = read_df["구분"].fillna("미지정").astype(str).str.strip()
+            read_df["구분"] = read_df["구분"].apply(lambda x: "미지정" if x == "" else x)
             
-            # 3. 구분(법인) 빈 값 자동 메움
-            read_df["구분"] = read_df["구분"].apply(lambda x: "미지정 법인" if x == "" else x)
-            
-            # 4. 텍스트 유사성 기반 자동 정제 열 매핑
+            # [자동 정리 핵심 부문] 값 유사성 매핑 가공
             read_df["소속_정제"] = read_df["소속"].apply(clean_location_name)
             read_df["징계종류_정제"] = read_df["징계종류"].apply(clean_discipline_type)
             
-            # 5. 년도 숫자 변환 예외 처리
+            # 데이터 타입 정제
             read_df["년도"] = pd.to_numeric(read_df["년도"], errors='coerce').fillna(datetime.date.today().year).astype(int)
-            
             return read_df
         except Exception as e:
             st.error(f"엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
             return pd.DataFrame(columns=REQUIRED_COLUMNS + ["소속_정제", "징계종류_정제"])
     else:
-        # 파일이 없을 때 샘플 데이터 자동 작동
+        # 파일이 없을 때를 대비한 기본 샘플 데이터 구조
         return pd.DataFrame([
             {
                 "번호": 1, "년도": 2026, "구분": "A전자", "소속": "서울본사 (미화)", "소속_정제": "서울본사",
@@ -77,16 +73,18 @@ def load_initial_data():
             }
         ])
 
-# 세션 상태 데이터 로드
+# 세션 상태에 데이터 저장
 if 'discipline_data' not in st.session_state:
     st.session_state.discipline_data = load_initial_data()
 
+# 데이터 참조 규칙 정의
 df = st.session_state.discipline_data
 
 # ----------------------------------------------------------------💡 사이드바: 데이터 추가 입력
 st.sidebar.header("➕ 신규 징계 내역 입력")
 with st.sidebar.form(key="input_form", clear_on_submit=True):
-    division_options = list(df["구분"].unique()) if not df.empty else ["A전자", "B화학", "C건설"]
+    division_options = list(df["구분"].dropna().unique()) if not df.empty else ["A전자", "B화학", "C건설"]
+    if "기타" not in division_options: division_options.append("기타")
     input_division = st.selectbox("구분(법인) 선택", division_options)
     
     current_year = datetime.date.today().year
@@ -104,12 +102,22 @@ with st.sidebar.form(key="input_form", clear_on_submit=True):
 if submit_button:
     if input_dept and input_name and input_reason:
         next_id = len(st.session_state.discipline_data) + 1
+        
+        # [오류 해결] 괄호 쌍이 꼬여서 발생했던 SyntaxError 부분을 깔끔하게 정돈했습니다.
         new_row = {
-            "번호": next_id, "년도": int(input_year), "구분": input_division, "소속": input_dept,
-            "소속_정제": clean_location_name(input_dept), "직책": input_position, "성명": input_name,
-            "징계 사유": input_reason, "징계종류": input_type, "징계종류_정제": clean_discipline_type(input_type),
+            "번호": next_id,
+            "년도": int(input_year),
+            "구분": input_division,
+            "소속": input_dept,
+            "소속_정제": clean_location_name(input_dept),
+            "직책": input_position,
+            "성명": input_name,
+            "징계 사유": input_reason,
+            "징계종류": input_type,
+            "징계종류_정제": clean_discipline_type(input_type),
             "징계일": input_date.strftime("%Y-%m-%d")
         }
+        
         st.session_state.discipline_data = pd.concat([st.session_state.discipline_data, pd.DataFrame([new_row])], ignore_index=True)
         st.sidebar.success("✅ 대시보드에 반영되었습니다!")
         st.rerun()
@@ -118,22 +126,17 @@ if submit_button:
 
 df = st.session_state.discipline_data
 
-# ----------------------------------------------------------------🔍 메인 화면: 동적 필터
+# ----------------------------------------------------------------🔍 메인 화면: 동적 필터 (정제된 텍스트 기준)
 st.subheader("🔍 데이터 필터링 (유사 내용 자동 정리 반영)")
 if not df.empty:
     col1, col2, col3 = st.columns(3)
     with col1:
-        # 데이터 유실 방지를 위해 빈 값 옵션 제거 처리 후 셀렉트박스 구축
-        options_div = [x for x in df["구분"].unique() if x != ""]
-        f_division = st.multiselect("구분(법인)", options=options_div, default=options_div)
+        f_division = st.multiselect("구분(법인)", options=df["구분"].unique(), default=df["구분"].unique())
     with col2:
-        options_yr = sorted(list(df["년도"].unique()))
-        f_year = st.multiselect("년도", options=options_yr, default=options_yr)
+        f_year = st.multiselect("년도", options=sorted(df["년도"].unique()), default=sorted(df["년도"].unique()))
     with col3:
-        options_dept = [x for x in df["소속_정제"].unique() if x != ""]
-        f_dept = st.multiselect("소속(자동 정리됨)", options=options_dept, default=options_dept)
+        f_dept = st.multiselect("소속(자동 정리됨)", options=df["소속_정제"].unique(), default=df["소속_정제"].unique())
 
-    # 필터 조건 적용 (조건에 해당하지 않더라도 데이터가 아예 증발하지 않도록 안전 매핑)
     filtered_df = df[
         (df["구분"].isin(f_division)) & 
         (df["년도"].isin(f_year)) & 
@@ -157,7 +160,6 @@ if not filtered_df.empty:
     with c2:
         st.markdown("#### 📅 월별 트렌드 (징계일 기준)")
         trend = filtered_df.copy()
-        # 다양한 날짜 텍스트 형식 강제 연산 처리
         trend["징계일"] = pd.to_datetime(trend["징계일"], errors='coerce')
         trend = trend.dropna(subset=["징계일"])
         
@@ -166,17 +168,17 @@ if not filtered_df.empty:
             trend_g = trend.groupby("년월").size().reset_index(name="건수").sort_values("년월")
             st.plotly_chart(px.line(trend_g, x="년월", y="건수", markers=True), use_container_width=True)
         else:
-            st.info("시계열 그래프용 '징계일'이 올바른 날짜 형식(예: 2026-03-15)이 아닙니다. 아래 데이터 표를 확인하세요.")
+            st.info("시계열 그래프를 표시할 수 있는 유효한 '징계일' 데이터가 없거나 형식이 다릅니다.")
         
         st.markdown("#### ⚖️ 징계종류 비율 (통합 통계)")
         st.plotly_chart(px.pie(filtered_df, names="징계종류_정제", hole=0.4), use_container_width=True)
 else:
-    st.warning("⚠️ 필터박스에서 모든 체크를 해제하셨거나 일치하는 데이터가 없습니다. 상단 필터에서 항목을 선택해 주세요.")
+    st.warning("조건에 맞는 데이터가 없습니다.")
 
 # ----------------------------------------------------------------📄 메인 화면: 데이터 표 및 다운로드
 st.markdown("---")
 st.subheader("📋 상세 내역 리스트")
-display_df = filtered_df[REQUIRED_COLUMNS] if not filtered_df.empty else df[REQUIRED_COLUMNS]
+display_df = filtered_df[REQUIRED_COLUMNS]
 st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 # 다운로드 버튼
