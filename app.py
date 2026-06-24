@@ -32,43 +32,34 @@ def clean_location_name(val):
     if pd.isna(val) or not isinstance(val, str):
         return "기타 사업장"
     val = val.replace('\n', ' ').strip()
-    # 괄호 내용 및 하위 부서 디테일 제거 (예: 서울본사 (미화) -> 서울본사)
     val = re.sub(r'\s*\(.*?\)\s*', '', val)
     return val.strip()
 
 def load_initial_data():
     if os.path.exists(EXCEL_FILE):
         try:
-            # [🔥 다중 시트 통합 핵심] sheet_name=None 으로 설정하여 모든 시트를 딕셔너리 형태로 읽어옵니다.
             all_sheets = pd.read_excel(EXCEL_FILE, sheet_name=None)
-            
             combined_rows = []
             
-            # 각 시트(년도별 시트 등)를 순회하며 데이터 추출
             for sheet_name, raw_df in all_sheets.items():
                 header_row_idx = None
                 
-                # 시트 내부에서 진짜 데이터 시작점(헤더) 찾기
                 for idx, row in raw_df.iterrows():
                     row_str = [str(x) for x in row.values]
                     if any("번호" in s or "년도" in s or "구분" in s for s in row_str):
                         header_row_idx = idx
                         break
                 
-                # 헤더 위치를 찾았다면 해당 위치부터 시트 데이터를 바르게 파싱
                 if header_row_idx is not None:
                     sheet_df = pd.read_excel(EXCEL_FILE, sheet_name=sheet_name, skiprows=header_row_idx)
                 else:
                     sheet_df = raw_df.copy()
                 
-                # 열 이름 공백 정리
                 sheet_df.columns = [str(c).strip() for c in sheet_df.columns]
                 
-                # 데이터가 없는 시트는 패스
                 if sheet_df.empty:
                     continue
                     
-                # 필수 열 검사 및 매핑 보정
                 for col in REQUIRED_COLUMNS:
                     if col not in sheet_df.columns:
                         matched_col = [c for c in sheet_df.columns if col in c or c in col]
@@ -77,29 +68,23 @@ def load_initial_data():
                         else:
                             sheet_df[col] = ""
                 
-                # 유효한 행만 필터링하여 리스트에 축적
                 sheet_df = sheet_df[REQUIRED_COLUMNS]
                 combined_rows.append(sheet_df)
             
-            # 모든 시트 데이터가 모였다면 하나로 합치기
             if combined_rows:
                 total_df = pd.concat(combined_rows, ignore_index=True)
             else:
                 return get_sample_data()
                 
-            # 데이터 데이터 정제 및 가공 연산 수행
-            total_df = total_df.dropna(subset=["성명", "징계종류"], how="all") # 완전 빈 줄 제거
+            total_df = total_df.dropna(subset=["성명", "징계종류"], how="all")
             total_df["구분"] = total_df["구분"].fillna("미지정").astype(str).str.strip()
             total_df["구분"] = total_df["구분"].apply(lambda x: "미지정" if x == "" or x == "nan" else x)
             
-            # 사업장명(소속) 및 징계종류 유사어 자동 매핑 정리
             total_df["소속_정제"] = total_df["소속"].apply(clean_location_name)
             total_df["징계종류_정제"] = total_df["징계종류"].apply(clean_discipline_type)
             
-            # 년도 데이터 정형화
             total_df["년도"] = pd.to_numeric(total_df["년도"], errors='coerce').fillna(datetime.date.today().year).astype(int)
             
-            # 번호 순서대로 재정렬 (1부터 이쁘게 나오도록 다시 매김)
             total_df = total_df.sort_values(by=["년도", "징계일"]).reset_index(drop=True)
             total_df["번호"] = total_df.index + 1
             
@@ -166,4 +151,65 @@ if submit_button:
 df = st.session_state.discipline_data
 
 # ----------------------------------------------------------------🔍 메인 화면: 동적 필터
-st.subheader("🔍 데이터 통합 필터링 (2
+# [수정 완료] 문장이 끊기지 않도록 확실하게 마감 처리를 완료했습니다.
+st.subheader("🔍 데이터 통합 필터링 (2018년 ~ 2026년 전체)")
+
+if not df.empty:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        f_division = st.multiselect("구분(법인)", options=list(df["구분"].unique()), default=list(df["구분"].unique()))
+    with col2:
+        f_year = st.multiselect("년도(개별 시트 통합됨)", options=sorted(list(df["년도"].unique())), default=sorted(list(df["년도"].unique())))
+    with col3:
+        f_dept = st.multiselect("소속(사업장 - 자동 정리됨)", options=list(df["소속_정제"].unique()), default=list(df["소속_정제"].unique())[:15])
+
+    filtered_df = df[
+        (df["구분"].isin(f_division)) & 
+        (df["년도"].isin(f_year)) & 
+        (df["소속_정제"].isin(f_dept))
+    ]
+else:
+    filtered_df = df
+
+# ----------------------------------------------------------------📊 메인 화면: 시각화 차트
+st.markdown("---")
+st.subheader("📊 연도별·사업장별 통합 실시간 트렌드")
+
+if not filtered_df.empty:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("#### 🏢 구분(법인)별 누적 발생 건수")
+        st.plotly_chart(px.bar(filtered_df, x="구분", color="구분", labels={"구분": "법인 구분", "count": "건수"}), use_container_width=True)
+        
+        st.markdown("#### 📍 소속(사업장)별 징계 지표 (유사어 자동 통합 반영)")
+        st.plotly_chart(px.histogram(filtered_df, x="소속_정제", color="징계종류_정제", barmode="stack", labels={"소속_정제": "소속 사업장", "징계종류_정제": "징계 종류"}), use_container_width=True)
+    with c2:
+        st.markdown("#### 📅 2018-2026 연도별 발생 추이 추적")
+        year_trend = filtered_df.groupby("년도").size().reset_index(name="건수").sort_values("년도")
+        st.plotly_chart(px.line(year_trend, x="년도", y="건수", text="건수", markers=True), use_container_width=True)
+        
+        st.markdown("#### ⚖️ 전체 징계종류 비율 분석")
+        st.plotly_chart(px.pie(filtered_df, names="징계종류_정제", hole=0.4), use_container_width=True)
+else:
+    st.warning("⚠️ 현재 선택된 필터 조건에 부합하는 데이터가 없습니다. 필터 선택 항목을 조정해 주세요.")
+
+# ----------------------------------------------------------------📄 메인 화면: 데이터 표 및 다운로드
+st.markdown("---")
+st.subheader("📋 2018~2026 전 시트 통합 상세 내역 리스트")
+
+display_cols = [c for c in REQUIRED_COLUMNS if c in filtered_df.columns]
+if filtered_df.empty:
+    st.info("데이터가 존재하지 않습니다.")
+else:
+    display_df = filtered_df[display_cols]
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    import io
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        display_df.to_excel(writer, index=False)
+    st.download_button(
+        label="📥 통합 본 데이터 엑셀 다운로드", data=output.getvalue(),
+        file_name="integrated_discipline_report.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
