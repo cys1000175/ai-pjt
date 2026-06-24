@@ -26,40 +26,64 @@ def clean_location_name(val):
 def load_initial_data():
     if os.path.exists(EXCEL_FILE):
         try:
-            all_sheets = pd.read_excel(EXCEL_FILE, sheet_name=None)
+            # [🔥 핵심 변경] sheet_name=None 으로 설정하여 엑셀 내부의 모든 시트를 한 번에 바인딩합니다.
+            excel_obj = pd.ExcelFile(EXCEL_FILE)
             combined_rows = []
-            for sheet_name, raw_df in all_sheets.items():
+            
+            for sheet_name in excel_obj.sheet_names:
+                # 1단계: 헤더(열 이름)가 어디 있는지 찾기 위해 임시로 읽음
+                raw_df = excel_obj.parse(sheet_name, header=None)
                 hdr_idx = 0
+                
                 for idx, row in raw_df.iterrows():
-                    if any(k in [str(x) for x in row.values] for k in ["번호", "년도", "구분"]):
+                    row_vals = [str(x).strip() for x in row.values if pd.notna(x)]
+                    # '성명' 이나 '번호', '년도' 가 들어있는 행을 실제 헤더 시작점으로 판단
+                    if any(k in row_vals for k in ["번호", "년도", "성명", "소속"]):
                         hdr_idx = idx
                         break
-                sheet_df = pd.read_excel(EXCEL_FILE, sheet_name=sheet_name, skiprows=hdr_idx)
+                
+                # 2단계: 찾아낸 헤더 위치를 기준으로 시트 데이터 파싱
+                sheet_df = excel_obj.parse(sheet_name, skiprows=hdr_idx)
                 sheet_df.columns = [str(c).strip() for c in sheet_df.columns]
-                if sheet_df.empty: continue
+                
+                if sheet_df.empty: 
+                    continue
+                
+                # 없는 컬럼은 빈 값 처리 및 유연한 컬럼 매칭
                 for col in REQUIRED_COLUMNS:
                     if col not in sheet_df.columns:
                         m = [c for c in sheet_df.columns if col in c or c in col]
                         sheet_df[col] = sheet_df[m[0]] if m else ""
-                combined_rows.append(sheet_df[REQUIRED_COLUMNS])
+                
+                # 유효한 데이터 행만 필터링 (성명이 비어있지 않은 행 위주)
+                sheet_df = sheet_df.dropna(subset=["성명"], how="all")
+                if not sheet_df.empty:
+                    combined_rows.append(sheet_df[REQUIRED_COLUMNS])
             
-            if not combined_rows: return get_sample_data()
-            total_df = pd.concat(combined_rows, ignore_index=True).dropna(subset=["성명", "징계종류"], how="all")
+            if not combined_rows: 
+                return get_sample_data()
+                
+            # 전체 시트 바인딩 및 최종 정제
+            total_df = pd.concat(combined_rows, ignore_index=True)
+            total_df = total_df[total_df["성명"].astype(str).str.strip() != ""]
+            
             total_df["구분"] = total_df["구분"].fillna("미지정").astype(str).str.strip().replace("", "미지정")
             total_df["소속_정제"] = total_df["소속"].apply(clean_location_name)
             total_df["징계종류_정제"] = total_df["징계종류"].apply(clean_discipline_type)
             total_df["년도"] = pd.to_numeric(total_df["년도"], errors='coerce').fillna(datetime.date.today().year).astype(int)
             total_df["성명"] = total_df["성명"].fillna("미상").astype(str).str.strip()
+            
             total_df = total_df.sort_values(by=["년도", "징계일"]).reset_index(drop=True)
             total_df["번호"] = total_df.index + 1
             return total_df
+            
         except Exception as e:
-            st.error(f"❌ 에러 발생: {e}")
+            st.error(f"❌ 전체 시트를 읽어오는 중 오류가 발생했습니다: {e}")
             return get_sample_data()
     return get_sample_data()
 
 def get_sample_data():
-    return pd.DataFrame([{c: "샘플" for c in REQUIRED_COLUMNS} | {"년도": 2026, "소속_정제": "샘플", "징계종류_정제": "기타"}])
+    return pd.DataFrame([{c: "연동대기" for c in REQUIRED_COLUMNS} | {"년도": 2026, "소속_정제": "테스트", "징계종류_정제": "기타"}])
 
 if 'discipline_data' not in st.session_state:
     st.session_state.discipline_data = load_initial_data()
@@ -92,46 +116,4 @@ if submit_button and input_dept and input_name and input_reason:
 
 df = st.session_state.discipline_data
 
-st.subheader("🔍 데이터 통합 검색 필터")
-if not df.empty:
-    col1, col2, col3 = st.columns(3)
-    with col1: f_year = st.multiselect("년도 선택 (비워두면 전체)", options=sorted(list(df["년도"].unique())))
-    with col2: f_dept = st.multiselect("소속 사업장 선택 (비워두면 전체)", options=sorted(list(df["소속_정제"].unique())))
-    with col3: f_name = st.multiselect("성명 검색 (비워두면 전체)", options=sorted(list(df["성명"].unique())))
-    
-    filtered_df = df.copy()
-    if f_year: filtered_df = filtered_df[filtered_df["년도"].isin(f_year)]
-    if f_dept: filtered_df = filtered_df[filtered_df["소속_정제"].isin(f_dept)]
-    if f_name: filtered_df = filtered_df[filtered_df["성명"].isin(f_name)]
-else:
-    filtered_df = df
-
-st.markdown("---")
-st.subheader("📊 연도별·사업장별 통합 실시간 트렌드")
-if not filtered_df.empty:
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("#### 🏢 구분(법인)별 누적 발생 건수")
-        st.plotly_chart(px.bar(filtered_df, x="구분", color="구분"), use_container_width=True)
-        st.markdown("#### 📍 소속(사업장)별 징계 지표")
-        st.plotly_chart(px.histogram(filtered_df, x="소속_정제", color="징계종류_정제", barmode="stack"), use_container_width=True)
-    with c2:
-        st.markdown("#### 📅 연도별 발생 추이 추적 (2018-2026)")
-        yt = filtered_df.groupby("년도").size().reset_index(name="건수")
-        st.plotly_chart(px.line(yt, x="년도", y="건수", text="건수", markers=True), use_container_width=True)
-        st.markdown("#### ⚖️ 전체 징계종류 비율 분석")
-        st.plotly_chart(px.pie(filtered_df, names="징계종류_정제", hole=0.4), use_container_width=True)
-else:
-    st.warning("⚠️ 선택하신 조건에 만족하는 내역이 없습니다.")
-
-st.markdown("---")
-st.subheader("📋 통합 상세 내역 리스트")
-if not filtered_df.empty:
-    display_df = filtered_df[[c for c in REQUIRED_COLUMNS if c in filtered_df.columns]]
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
-    import io
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as w: display_df.to_excel(w, index=False)
-    st.download_button(label="📥 통합 본 데이터 엑셀 다운로드", data=output.getvalue(), file_name="integrated_report.xlsx")
-else:
-    st.info("데이터가 없습니다.")
+st.subheader("🔍 데이터
