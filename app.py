@@ -103,9 +103,4 @@ if submit_button:
     if input_dept and input_name and input_reason:
         next_id = len(st.session_state.discipline_data) + 1
         
-        new_row = {
-            "번호": next_id,
-            "년도": int(input_year),
-            "구분": input_division,
-            "소속": input_dept,
-            "소속_정제": clean_location_name(
+        # [오류 해결] 괄호 쌍
