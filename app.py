@@ -151,24 +151,27 @@ if submit_button:
 
 df = st.session_state.discipline_data
 
-# ----------------------------------------------------------------🔍 메인 화면: 동적 필터 (요청사항 반영)
+# ----------------------------------------------------------------🔍 메인 화면: 동적 필터 (안전 잠금 강화)
 st.subheader("🔍 데이터 통합 검색 필터")
 
 if not df.empty:
     col1, col2, col3 = st.columns(3)
     with col1:
-        f_year = st.multiselect("년도(개별 시트 통합됨)", options=sorted(list(df["년도"].unique())), default=sorted(list(df["년도"].unique())))
+        # 아무것도 선택 안했을 때는 전체 조회가 되도록 default 세팅을 최적화했습니다.
+        f_year = st.multiselect("년도 선택 (비워두면 전체 조회)", options=sorted(list(df["년도"].unique())))
     with col2:
-        f_dept = st.multiselect("소속(사업장-자동 정리됨)", options=list(df["소속_정제"].unique()), default=list(df["소속_정제"].unique())[:15])
+        f_dept = st.multiselect("소속 사업장 선택 (비워두면 전체 조회)", options=sorted(list(df["소속_정제"].unique())))
     with col3:
-        # [변경포인트] 성명 다중 선택 필터 탑재
-        f_name = st.multiselect("성명별 필터", options=sorted(list(df["성명"].unique())), default=list(df["성명"].unique()))
+        f_name = st.multiselect("성명 검색 (비워두면 전체 조회)", options=sorted(list(df["성명"].unique())))
 
-    filtered_df = df[
-        (df["년도"].isin(f_year)) & 
-        (df["소속_정제"].isin(f_dept)) &
-        (df["성명"].isin(f_name))
-    ]
+    # [🔥 해결 포인트] 필터가 비어 있으면(선택을 안 하면) 해당 조건은 패스(전체선택)하도록 로직 고도화
+    filtered_df = df.copy()
+    if f_year:
+        filtered_df = filtered_df[filtered_df["년도"].isin(f_year)]
+    if f_dept:
+        filtered_df = filtered_df[filtered_df["소속_정제"].isin(f_dept)]
+    if f_name:
+        filtered_df = filtered_df[filtered_df["성명"].isin(f_name)]
 else:
     filtered_df = df
 
@@ -182,7 +185,7 @@ if not filtered_df.empty:
         st.markdown("#### 🏢 구분(법인)별 누적 발생 건수")
         st.plotly_chart(px.bar(filtered_df, x="구분", color="구분", labels={"구분": "법인 구분", "count": "건수"}), use_container_width=True)
         
-        st.markdown("#### 📍 소속(사업장)별 징계 지표 (유사어 자동 통합 반영)")
+        st.markdown("#### 📍 소속(사업장)별 징계 지표")
         st.plotly_chart(px.histogram(filtered_df, x="소속_정제", color="징계종류_정제", barmode="stack", labels={"소속_정제": "소속 사업장", "징계종류_정제": "징계 종류"}), use_container_width=True)
     with c2:
         st.markdown("#### 📅 2018-2026 연도별 발생 추이 추적")
@@ -192,7 +195,7 @@ if not filtered_df.empty:
         st.markdown("#### ⚖️ 전체 징계종류 비율 분석")
         st.plotly_chart(px.pie(filtered_df, names="징계종류_정제", hole=0.4), use_container_width=True)
 else:
-    st.warning("⚠️ 현재 선택된 필터 조건에 부합하는 데이터가 없습니다. 필터 선택 항목을 조정해 주세요.")
+    st.warning("⚠️ 선택하신 필터 조합(년도+소속+성명)에 동시에 만족하는 데이터가 데이터베이스에 없습니다. 필터 선택을 가볍게 클릭하여 해제해 보세요!")
 
 # ----------------------------------------------------------------📄 메인 화면: 데이터 표 및 다운로드
 st.markdown("---")
@@ -200,7 +203,7 @@ st.subheader("📋 2018~2026 전 시트 통합 상세 내역 리스트")
 
 display_cols = [c for c in REQUIRED_COLUMNS if c in filtered_df.columns]
 if filtered_df.empty:
-    st.info("데이터가 존재하지 않습니다.")
+    st.info("조건을 만족하는 징계 내역 데이터가 없습니다. 상단 필터를 비우면 전체 내역이 다시 나타납니다.")
 else:
     display_df = filtered_df[display_cols]
     st.dataframe(display_df, use_container_width=True, hide_index=True)
@@ -209,8 +212,4 @@ else:
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         display_df.to_excel(writer, index=False)
-    st.download_button(
-        label="📥 통합 본 데이터 엑셀 다운로드", data=output.getvalue(),
-        file_name="integrated_discipline_report.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    st.
