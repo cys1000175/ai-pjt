@@ -4,7 +4,7 @@ import plotly.express as px
 import os
 
 st.set_page_config(layout="wide")
-st.title("🏛️ 미성엠프로 인사 징계 시스템")
+st.title("🏛️ 미성엠프로 인사 징계 통합 시스템")
 
 ADMIN_PASSWORD = "1234"
 
@@ -56,15 +56,24 @@ def load_all_data():
                     if any(k in c for k in keywords): 
                         return data_df[c].fillna(default)
                 return default
-            res["Year"] = get_val(["년도", "연도"], sheet.replace("년", "").strip())
-            res["Division"] = get_val(["구분"])
+            
+            # 기본 데이터 매핑
             res["Date"] = get_val(["일 자", "일자", "징계일"])
+            res["Division"] = get_val(["구분"])
             res["Dept"] = get_val(["소속"])
             res["Position"] = get_val(["직책", "직급"])
             res["Name"] = get_val(["성명", "성 명"])
             res["Reason"] = get_val(["사유", "징계 사유"])
             res["Type"] = get_val(["종류", "징계 종류"])
+            
+            # [🔥 일자 기반 년도 자동 추출 엔진 적용]
+            # 시트 이름이 아닌, 실제 일자 열의 연도를 파싱하여 반영합니다.
+            dt_parsed = pd.to_datetime(res["Date"], errors="coerce")
+            sheet_yr = sheet.replace("년", "").strip()
+            res["Year"] = dt_parsed.dt.year.fillna(sheet_yr)
+            
             all_sheets.append(res)
+            
         if not all_sheets: 
             return pd.DataFrame()
         final_df = pd.concat(all_sheets, ignore_index=True)
@@ -211,8 +220,6 @@ else:
     st.markdown("---")
     show_df = f_df[["Year", "Division", "Date", "Dept", "Position", "Name", "Reason", "Type"]].copy()
     
-    # [🔥 강제 텍스트화 엔진 장착] 
-    # 날짜를 계산 데이터가 아닌 순수 글자형식으로 굳혀 스트림릿의 자동 변환을 원천 차단합니다.
     dt_p = pd.to_datetime(show_df["Date"], errors="coerce")
     show_df["Date"] = dt_p.dt.strftime("%Y-%m-%d").fillna("").astype(str)
     
