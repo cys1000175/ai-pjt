@@ -103,7 +103,6 @@ else:
         
     f_df = df.copy()
     
-    # [🔥 가로 폭 초압축] 잘렸던 연산 부분을 안전하게 개행 처리했습니다.
     if f_yr: 
         f_df = f_df[f_df["Year"].isin(f_yr)]
     if f_dp: 
@@ -129,7 +128,11 @@ else:
             color="Division", 
             text_auto=True
         )
-        fig1.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
+        # [🔥 표식 지우기 완벽 반영] 우측에 생성되던 불필요한 범례 표식을 완전히 숨겼습니다.
+        fig1.update_layout(
+            showlegend=False, 
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
         st.plotly_chart(fig1, use_container_width=True)
         
         st.write("##### 📍 사업장별 TOP 10")
