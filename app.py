@@ -15,8 +15,8 @@ EXCEL_FILE = "data.xlsx"
 REQUIRED_COLUMNS = ["번호", "년도", "구분", "소속", "직책", "성명", "징계 사유", "징계종류", "징계일"]
 
 def clean_discipline_type(val):
-    """징계종류 텍스트 유연하게 매핑 (예: 감봉(10%) -> 감봉)"""
-    if pd.isna(val) or not isinstance(val, str):
+    """징계종류 텍스트 유연하게 매핑 (빈 값이면 '기타' 처리하여 필터 깨짐 방지)"""
+    if pd.isna(val) or not isinstance(val, str) or val.strip() == "":
         return "기타"
     val = val.strip()
     if "해고" in val: return "해고"
@@ -31,40 +31,44 @@ def clean_discipline_type(val):
     return "기타"
 
 def clean_location_name(val):
-    """소속 사업장명 뒤의 줄바꿈이나 (미화), (보안) 등의 괄호 요소를 제거하여 자동 통합"""
-    if pd.isna(val) or not isinstance(val, str):
-        return "기타 사업장"
-    # 줄바꿈 제거 및 괄호 내용 제거
+    """소속 사업장명 뒤의 줄바꿈이나 부서 괄호 요소를 제거하여 자동 통합"""
+    if pd.isna(val) or not isinstance(val, str) or val.strip() == "":
+        return "미지정 소속"
     val = val.replace('\n', ' ').strip()
     val = re.sub(r'\s*\(.*?\)\s*', '', val)
-    return val.strip()
+    return val.strip() if val.strip() != "" else "미지정 소속"
 
 def load_initial_data():
     if os.path.exists(EXCEL_FILE):
         try:
             read_df = pd.read_excel(EXCEL_FILE)
             
-            # 엑셀에 필수 열들이 모두 있는지 확인하고 없으면 빈 열 생성
+            # 1. 존재하지 않는 열이 있다면 공백으로 자동 생성
             for col in REQUIRED_COLUMNS:
                 if col not in read_df.columns:
                     read_df[col] = ""
             
-            # 원본 데이터 백업 보존하면서 정제 데이터 열 추가 생성 및 값 변경
-            read_df["구분"] = read_df["구분"].fillna("미지정").astype(str).str.strip()
-            read_df["구분"] = read_df["구분"].apply(lambda x: "미지정" if x == "" else x)
+            # 2. 모든 텍스트 컬럼의 양끝 공백 제거 및 결측치(NaN) 방어 처리
+            for col in REQUIRED_COLUMNS:
+                if col not in ["번호", "년도"]:
+                    read_df[col] = read_df[col].fillna("").astype(str).str.strip()
             
-            # [자동 정리 핵심 부문] 값 유사성 매핑 가공
+            # 3. 구분(법인) 빈 값 자동 메움
+            read_df["구분"] = read_df["구분"].apply(lambda x: "미지정 법인" if x == "" else x)
+            
+            # 4. 텍스트 유사성 기반 자동 정제 열 매핑
             read_df["소속_정제"] = read_df["소속"].apply(clean_location_name)
             read_df["징계종류_정제"] = read_df["징계종류"].apply(clean_discipline_type)
             
-            # 데이터 타입 정제
+            # 5. 년도 숫자 변환 예외 처리
             read_df["년도"] = pd.to_numeric(read_df["년도"], errors='coerce').fillna(datetime.date.today().year).astype(int)
+            
             return read_df
         except Exception as e:
             st.error(f"엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
             return pd.DataFrame(columns=REQUIRED_COLUMNS + ["소속_정제", "징계종류_정제"])
     else:
-        # 파일이 없을 때를 대비한 기본 샘플 데이터 구조
+        # 파일이 없을 때 샘플 데이터 자동 작동
         return pd.DataFrame([
             {
                 "번호": 1, "년도": 2026, "구분": "A전자", "소속": "서울본사 (미화)", "소속_정제": "서울본사",
@@ -73,18 +77,16 @@ def load_initial_data():
             }
         ])
 
-# 세션 상태에 데이터 저장
+# 세션 상태 데이터 로드
 if 'discipline_data' not in st.session_state:
     st.session_state.discipline_data = load_initial_data()
 
-# 데이터 참조 규칙 정의
 df = st.session_state.discipline_data
 
 # ----------------------------------------------------------------💡 사이드바: 데이터 추가 입력
 st.sidebar.header("➕ 신규 징계 내역 입력")
 with st.sidebar.form(key="input_form", clear_on_submit=True):
-    division_options = list(df["구분"].dropna().unique()) if not df.empty else ["A전자", "B화학", "C건설"]
-    if "기타" not in division_options: division_options.append("기타")
+    division_options = list(df["구분"].unique()) if not df.empty else ["A전자", "B화학", "C건설"]
     input_division = st.selectbox("구분(법인) 선택", division_options)
     
     current_year = datetime.date.today().year
@@ -102,5 +104,5 @@ with st.sidebar.form(key="input_form", clear_on_submit=True):
 if submit_button:
     if input_dept and input_name and input_reason:
         next_id = len(st.session_state.discipline_data) + 1
-        
-        # [오류 해결] 괄호 쌍
+        new_row = {
+            "번호": next_id, "년도": int(input_year), "구분": input_division,
