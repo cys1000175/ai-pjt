@@ -6,8 +6,7 @@ import os
 st.set_page_config(layout="wide")
 st.title("인사 징계 내역 통합 관리 대시보드")
 
-# 보안 비밀번호 설정
-ADMIN_PASSWORD = "misung7223*"
+ADMIN_PASSWORD = "1234"
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
@@ -135,7 +134,6 @@ else:
         
         st.write("#### 📍 소속 사업장별 발생 TOP 10")
         top_depts = f_df["Dept_Clean"].value_counts().head(10).reset_index()
-        # [🔥 짤림 완벽 방정] 짤림을 유발하던 컬럼 정의 부분을 분할 선언했습니다.
         c_names = ["사업장명", "건수"]
         top_depts.columns = c_names
         fig2 = px.bar(top_depts, x="사업장명", y="건수", color="사업장명")
@@ -148,14 +146,16 @@ else:
         st.plotly_chart(fig3, use_container_width=True)
         
         st.write("#### ⚖️ 전체 징계 유형별 비율 현황")
+        # [🔥 가독성 긴급 개선] 원형 차트 내부에 글자를 강제로 표시하고 텍스트 위치를 최적화했습니다.
         fig4 = px.pie(f_df, names="Type_Clean", hole=0.3)
+        fig4.update_traces(textposition='inside', textinfo='label+percent')
+        fig4.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
         st.plotly_chart(fig4, use_container_width=True)
         
     st.write("---")
     st.write("### 📋 통합 상세 내역 마스터 테이블")
     
     show_df = f_df[["Year", "Division", "Date", "Dept", "Position", "Name", "Reason", "Type"]].copy()
-    # [🔥 안정성 강화] 컬럼명 치환을 안전하게 분할 처리
     show_df_cols = ["년도", "구분", "일자", "소속", "직책", "성명", "징계 사유", "징계종류"]
     show_df.columns = show_df_cols
     
